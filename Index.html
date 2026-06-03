@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <title>Game Tangkap Aset</title>
+    <script src="https://cdn.jsdelivr.net/npm/phaser@3.60.0/dist/phaser.min.js"></script>
+    <style>
+        body { margin: 0; padding: 0; background: #1a1a1a; overflow: hidden; display: flex; justify-content: center; align-items: center; height: 100vh; }
+        #login-ui { position: absolute; top: 10px; right: 10px; background: rgba(0, 0, 0, 0.7); padding: 10px; border-radius: 8px; color: white; z-index: 10; display: flex; gap: 5px; }
+        input { padding: 5px; border-radius: 4px; border: none; }
+        button { padding: 5px 10px; cursor: pointer; background: #6366f1; color: white; border: none; border-radius: 4px; }
+    </style>
+</head>
+<body>
+    <div id="login-ui">
+        <input type="text" id="userid" placeholder="ID User">
+        <button onclick="login()">Login</button>
+    </div>
+
+<script>
+    let currentUserId = localStorage.getItem('savedUserId') || "Guest";
+    window.onload = () => { if (currentUserId !== "Guest") updateLoginUI(); };
+
+    function login() {
+        const id = document.getElementById('userid').value;
+        if(id.trim() !== "") {
+            currentUserId = id;
+            localStorage.setItem('savedUserId', id);
+            updateLoginUI();
+        }
+    }
+
+    function updateLoginUI() {
+        document.getElementById('login-ui').innerHTML = 
+            "User: <b>" + currentUserId + "</b> " +
+            "<button onclick='resetUser()' style='background:#ef4444; border:none; color:white; padding: 2px 8px; cursor:pointer; border-radius:4px;'>Hapus</button>";
+    }
+
+    function resetUser() {
+        currentUserId = "Guest";
+        localStorage.removeItem('savedUserId');
+        document.getElementById('login-ui').innerHTML = 
+            '<input type="text" id="userid" placeholder="ID User">' +
+            '<button onclick="login()">Login</button>';
+    }
+
+    let cKaya = 0, cRumah = 0, cMeteor = 0;
+    const SPEED_KAYA = 150, SPEED_RUMAH = 180, SPEED_METEOR = 200; 
+
+    const config = {
+        type: Phaser.AUTO, width: 800, height: 600,
+        scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
+        physics: { default: 'arcade', arcade: { gravity: { y: 0 } } },
+        scene: { preload: preload, create: create, update: update }
+    };
+
+    const game = new Phaser.Game(config);
+    let player, obstacle, rumah, meteor, cursors, scoreText, restartBtn, warningText;
+    let score = 0, gameStarted = false;
+    let bgMusic, soundBom, soundRumah, soundGameOver, moneySound; 
+
+    function preload() {
+        this.load.image('bg', 'bg.png'); this.load.image('player', 'player.png');
+        this.load.image('kaya', 'kaya.png'); this.load.image('rumah', 'Rumah2.png');
+        this.load.image('meteor', 'meteor.png');
+        
+        this.load.audio('bgMusic', 'bg.mp3');
+        this.load.audio('bom', 'bom.mp3');
+        this.load.audio('rumahSound', 'rumah.wav');
+        this.load.audio('gameOverSound', 'gameover.mp3');
+        this.load.audio('moneySound', 'money.mp3'); 
+    }
+
+    function create() {
+        this.add.image(400, 300, 'bg');
+        
+        bgMusic = this.sound.add('bgMusic', { loop: true, volume: 0.5 });
+        soundBom = this.sound.add('bom');
+        soundRumah = this.sound.add('rumahSound');
+        soundGameOver = this.sound.add('gameOverSound');
+        moneySound = this.sound.add('moneySound'); 
+
+        let ground = this.add.rectangle(400, 600, 800, 20, 0x000000);
+        this.physics.add.existing(ground, true);
+        player = this.physics.add.sprite(400, 500, 'player').setDisplaySize(120, 120).setSize(80, 80).setCollideWorldBounds(true);
+        this.physics.add.collider(player, ground);
+        obstacle = this.physics.add.sprite(Phaser.Math.Between(50, 750), -200, 'kaya').setDisplaySize(80, 80).setSize(60, 60);
+        rumah = this.physics.add.sprite(Phaser.Math.Between(50, 750), -500, 'rumah').setDisplaySize(100, 100).setSize(80, 80);
+        meteor = this.physics.add.sprite(Phaser.Math.Between(50, 750), -800, 'meteor').setDisplaySize(90, 90).setSize(70, 70);
+        
+        scoreText = this.add.text(16, 16, 'Skor: 0', { fontSize: '32px', fill: '#fff' });
+        warningText = this.add.text(400, 360, '', { fontSize: '20px', fill: '#ff4757' }).setOrigin(0.5);
+        let startText = this.add.text(400, 300, 'START GAME', { fontSize: '30px', fill: '#fff', backgroundColor: '#22c55e', padding: { x: 20, y: 10 } }).setOrigin(0.5).setInteractive();
+        restartBtn = this.add.text(400, 450, 'RESTART GAME', { fontSize: '30px', fill: '#fff', backgroundColor: '#ef4444', padding: { x: 20, y: 10 } }).setOrigin(0.5).setAlpha(0).setDepth(25);
+
+        const startGame = () => {
+            if (currentUserId === "Guest") { warningText.setText("Silakan Login ID User terlebih dahulu!"); return; }
+            if (gameStarted) return;
+            gameStarted = true; startText.destroy(); warningText.destroy();
+            bgMusic.play();
+            obstacle.setVelocityY(SPEED_KAYA);
+            this.time.delayedCall(5000, () => rumah.setVelocityY(SPEED_RUMAH));
+            this.time.delayedCall(10000, () => meteor.setVelocityY(SPEED_METEOR));
+        };
+
+        startText.on('pointerdown', startGame);
+        this.input.keyboard.on('keydown-SPACE', () => { 
+            if(!gameStarted && restartBtn.alpha === 1) location.reload();
+            else if(!gameStarted) startGame();
+        });
+        
+        cursors = this.input.keyboard.addKeys('LEFT,RIGHT,UP');
+        this.physics.add.collider(player, meteor, () => {
+            soundBom.play();
+            gameOver.call(this);
+        }, null, this);
+        
+        this.physics.add.overlap(player, obstacle, () => { 
+            score += 10; cKaya++; moneySound.play(); 
+            scoreText.setText('Skor: ' + score); resetAsset(obstacle, SPEED_KAYA); 
+        }, null, this);
+
+        this.physics.add.overlap(player, rumah, () => { 
+            score += 50; cRumah++; soundRumah.play();
+            scoreText.setText('Skor: ' + score); resetAsset(rumah, SPEED_RUMAH); 
+        }, null, this);
+        
+        this.physics.add.collider(meteor, ground, () => { cMeteor++; resetAsset(meteor, SPEED_METEOR); }, null, this);
+    }
+
+    function resetAsset(obj, speed) { obj.y = -200; obj.x = Phaser.Math.Between(50, 750); obj.setVelocityY(speed); }
+    function gameOver() { 
+        if(gameStarted) { 
+            gameStarted = false; this.physics.pause(); 
+            bgMusic.stop(); 
+            soundGameOver.play();
+            this.add.rectangle(400, 300, 800, 600, 0x000000, 0.8).setDepth(20);
+            restartBtn.setAlpha(1);
+            let info = `GAME OVER!\n\nUser: ${currentUserId}\nTotal Skor: ${score}\n\nKaya: ${cKaya} | Rumah: ${cRumah} | Meteor: ${cMeteor}`;
+            this.add.text(400, 250, info, { fontSize: '28px', fill: '#fff', align: 'center' }).setOrigin(0.5).setDepth(21);
+        } 
+    }
+    function update() {
+        if (!gameStarted) return;
+        player.setVelocityX(0);
+        if (cursors.LEFT.isDown) player.setVelocityX(-500);
+        if (cursors.RIGHT.isDown) player.setVelocityX(500);
+        if (cursors.UP.isDown && player.body.blocked.down) player.setVelocityY(-800);
+        
+        // --- EFEK VISUAL ---
+        rumah.setScale(0.8 + Math.sin(this.time.now / 100) * 0.1);
+        meteor.setAngle(Math.sin(this.time.now / 50) * 15);
+        // -------------------
+
+        if (obstacle.y > 600) resetAsset(obstacle, SPEED_KAYA);
+        if (rumah.y > 600) resetAsset(rumah, SPEED_RUMAH);
+        if (meteor.y > 600) resetAsset(meteor, SPEED_METEOR);
+    }
+</script>
+</body>
+</html>
